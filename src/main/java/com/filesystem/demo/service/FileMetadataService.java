@@ -20,14 +20,20 @@ import java.nio.file.Path;
 @Service
 public class FileMetadataService {
 
+    private final FileStorageService fileStorageService;
     private final FileMetadataRepository fileMetadataRepository;
     private final MongoTemplate mongoTemplate;
 
     @Autowired
-    public FileMetadataService(FileMetadataRepository fileMetadataRepository, MongoTemplate mongoTemplate) {
+    public FileMetadataService(FileStorageService fileStorageService,
+                               FileMetadataRepository fileMetadataRepository,
+                               MongoTemplate mongoTemplate) {
+        this.fileStorageService = fileStorageService;
         this.fileMetadataRepository = fileMetadataRepository;
         this.mongoTemplate = mongoTemplate;
     }
+
+
 
     public void saveFileMetadata(String fileName, Path filePath, MultipartFile file, UserMetadata userMetadata) {
         FileMetadata metadata = FileMetadata.builder()
@@ -108,4 +114,32 @@ public class FileMetadataService {
     public FileMetadata getFileMetadataById(String id) {
         return fileMetadataRepository.findById(id).orElse(null);
     }
+    public boolean updateFileMetadata(String fileId, FileMetadata updatedMetadata, UserMetadata userMetadata) {
+        FileMetadata existingFile = fileMetadataRepository.findById(fileId).orElse(null);
+        if (existingFile == null || !existingFile.getUploaderId().equals(userMetadata.getUserId())) {
+            return false;
+        }
+
+        existingFile.setFileName(updatedMetadata.getFileName());
+        existingFile.setContentType(updatedMetadata.getContentType());
+
+        fileMetadataRepository.save(existingFile);
+        return true;
+    }
+
+    public boolean deleteFile(String fileId, UserMetadata userMetadata) {
+        FileMetadata fileMetadata = fileMetadataRepository.findById(fileId).orElse(null);
+        if (fileMetadata == null || !fileMetadata.getUploaderId().equals(userMetadata.getUserId())) {
+            return false;
+        }
+
+        boolean fileDeleted = fileStorageService.deleteFile(fileMetadata.getFilePath());
+        if (fileDeleted) {
+            fileMetadataRepository.deleteById(fileId);
+            return true;
+        }
+
+        return false;
+    }
+
 }

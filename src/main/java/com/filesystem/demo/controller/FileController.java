@@ -81,8 +81,6 @@ public class FileController {
 
     @GetMapping("/download/{id}")
     public ResponseEntity<Resource> downloadOrDisplayFile(@PathVariable("id") String id, HttpServletRequest request) {
-        // Extraemos el token y validamos al usuario (se puede omitir el filtrado de compañía si se desea que
-        // cualquier token con autorización pueda acceder al archivo)
         String token = jwtService.extractToken(request);
         UserMetadata userMetadata = jwtService.extractUserMetadata(token);
         if (userMetadata == null) {
@@ -94,9 +92,7 @@ public class FileController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
 
-        // Nota: Si deseas restringir el acceso para que solo se puedan ver archivos de la misma compañía,
-        // puedes incluir la validación de compañía aquí. En este ejemplo se asume que el endpoint es accesible
-        // para cualquier token autorizado.
+
 
         Path filePath = Paths.get(metadata.getFilePath());
         try {
@@ -109,8 +105,7 @@ public class FileController {
                     ? metadata.getContentType()
                     : "application/octet-stream";
 
-            // Si el tipo de contenido es de imagen, se mostrará en el navegador (inline).
-            // En otro caso, se forzará la descarga (attachment).
+
             String contentDisposition;
             if (contentType.startsWith("image/")) {
                 contentDisposition = "inline; filename=\"" + metadata.getFileName() + "\"";
@@ -126,4 +121,41 @@ public class FileController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<String> updateFileMetadata(@PathVariable("id") String id,
+                                                     @RequestBody FileMetadata updatedMetadata,
+                                                     HttpServletRequest request) {
+        String token = jwtService.extractToken(request);
+        UserMetadata userMetadata = jwtService.extractUserMetadata(token);
+
+        if (userMetadata == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized");
+        }
+
+        boolean updated = fileMetadataService.updateFileMetadata(id, updatedMetadata, userMetadata);
+        if (updated) {
+            return ResponseEntity.ok("File metadata updated successfully.");
+        } else {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You are not allowed to update this file.");
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deleteFile(@PathVariable("id") String id, HttpServletRequest request) {
+        String token = jwtService.extractToken(request);
+        UserMetadata userMetadata = jwtService.extractUserMetadata(token);
+
+        if (userMetadata == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized");
+        }
+
+        boolean deleted = fileMetadataService.deleteFile(id, userMetadata);
+        if (deleted) {
+            return ResponseEntity.ok("File deleted successfully.");
+        } else {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You are not allowed to delete this file.");
+        }
+    }
+
 }

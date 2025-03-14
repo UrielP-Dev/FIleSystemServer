@@ -28,4 +28,14 @@ public class FileStorageService {
 
         return filePath;
     }
+
+    public boolean deleteFile(String filePath) {
+        try {
+            Path path = Paths.get(filePath);
+            return Files.deleteIfExists(path);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
 }
