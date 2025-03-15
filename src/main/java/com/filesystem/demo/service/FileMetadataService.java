@@ -11,11 +11,13 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.nio.file.Path;
+import java.util.UUID;
 
 @Service
 public class FileMetadataService {
@@ -33,10 +35,12 @@ public class FileMetadataService {
         this.mongoTemplate = mongoTemplate;
     }
 
-
-
     public void saveFileMetadata(String fileName, Path filePath, MultipartFile file, UserMetadata userMetadata) {
+        // Generar un identificador único para el fileId
+        String fileId = UUID.randomUUID().toString();
+
         FileMetadata metadata = FileMetadata.builder()
+                .fileId(fileId)
                 .fileName(fileName)
                 .filePath(filePath.toAbsolutePath().toString())
                 .fileSize(file.getSize())
@@ -46,10 +50,12 @@ public class FileMetadataService {
                 .uploaderUsername(userMetadata != null ? userMetadata.getUsername() : null)
                 .uploaderCompany(userMetadata != null ? userMetadata.getCompany() : null)
                 .uploaderRole(userMetadata != null ? userMetadata.getRole() : null)
+                .version(0)
                 .build();
 
         fileMetadataRepository.save(metadata);
     }
+
 
     public List<FileMetadata> findFiles(
             String userId,
@@ -80,7 +86,6 @@ public class FileMetadataService {
                 Date fromDate = dateFormat.parse(dateFrom);
                 query.addCriteria(Criteria.where("uploadDate").gte(fromDate));
             } catch (ParseException e) {
-                // Manejar la excepción o registrar el error según convenga
             }
         }
         if (dateTo != null && !dateTo.isEmpty()) {
@@ -88,7 +93,6 @@ public class FileMetadataService {
                 Date toDate = dateFormat.parse(dateTo);
                 query.addCriteria(Criteria.where("uploadDate").lte(toDate));
             } catch (ParseException e) {
-                // Manejar la excepción o registrar el error según convenga
             }
         }
         if (minSize != null) {
@@ -98,7 +102,6 @@ public class FileMetadataService {
             query.addCriteria(Criteria.where("fileSize").lte(maxSize));
         }
 
-        // Ordenación: sortBy puede ser "date" o "size"
         if (sortBy != null && !sortBy.isEmpty()) {
             Sort.Direction direction = ("desc".equalsIgnoreCase(order)) ? Sort.Direction.DESC : Sort.Direction.ASC;
             if ("date".equalsIgnoreCase(sortBy)) {
@@ -141,5 +144,40 @@ public class FileMetadataService {
 
         return false;
     }
+
+    public void uploadNewVersion(String fileId, MultipartFile file, UserMetadata userMetadata) throws IOException {
+        // Buscar la última versión del archivo usando el fileId.
+        FileMetadata lastVersion = fileMetadataRepository.findTopByFileIdOrderByVersionDesc(fileId);
+        int newVersion = (lastVersion != null) ? lastVersion.getVersion() + 1 : 1;
+
+        // Definir el nombre del nuevo archivo (manteniendo el nombre base o agregando el número de versión).
+        String baseFileName = (lastVersion != null) ? lastVersion.getFileName() : file.getOriginalFilename();
+        String newFileName = baseFileName + "_v" + newVersion;
+
+        // Almacenar el archivo con un nombre personalizado.
+        Path filePath = fileStorageService.storeFile(file, newFileName);
+
+        // Crear la metadata para la nueva versión.
+        FileMetadata newMetadata = FileMetadata.builder()
+                .fileId(fileId) // Se mantiene el mismo fileId para todas las versiones.
+                .fileName(baseFileName) // Se conserva el nombre base.
+                .filePath(filePath.toAbsolutePath().toString())
+                .fileSize(file.getSize())
+                .contentType(file.getContentType())
+                .uploadDate(new Date())
+                .uploaderId(userMetadata.getUserId())
+                .uploaderUsername(userMetadata.getUsername())
+                .uploaderCompany(userMetadata.getCompany())
+                .uploaderRole(userMetadata.getRole())
+                .version(newVersion)
+                .build();
+
+        fileMetadataRepository.save(newMetadata);
+    }
+
+    public List<FileMetadata> getAllVersions(String fileId) {
+        return fileMetadataRepository.findByFileIdOrderByVersionDesc(fileId);
+    }
+
 
 }

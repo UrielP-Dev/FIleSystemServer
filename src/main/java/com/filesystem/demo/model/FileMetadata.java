@@ -14,6 +14,7 @@ import java.util.Date;
 public class FileMetadata {
     @Id
     private String id;
+    private String fileId;
     private String fileName;
     private String filePath;
     private long fileSize;
@@ -23,4 +24,5 @@ public class FileMetadata {
     private String uploaderUsername;
     private String uploaderCompany;
     private String uploaderRole;
+    private int version;
 }

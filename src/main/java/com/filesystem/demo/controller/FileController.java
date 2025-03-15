@@ -157,5 +157,40 @@ public class FileController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("You are not allowed to delete this file.");
         }
     }
+    @GetMapping("/versions/{fileId}")
+    public ResponseEntity<List<FileMetadata>> getFileVersions(@PathVariable("fileId") String fileId,
+                                                              HttpServletRequest request) {
+        // Extraer el token y obtener la metadata del usuario autenticado
+        String token = jwtService.extractToken(request);
+        UserMetadata userMetadata = jwtService.extractUserMetadata(token);
+
+        if (userMetadata == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        // Recuperar todas las versiones del archivo usando el fileId
+        List<FileMetadata> versions = fileMetadataService.getAllVersions(fileId);
+
+        return ResponseEntity.ok(versions);
+    }
+    @PostMapping("/upload/version/{fileId}")
+    public ResponseEntity<String> uploadFileVersion(@PathVariable("fileId") String fileId,
+                                                    @RequestParam("file") MultipartFile file,
+                                                    HttpServletRequest request) {
+        String token = jwtService.extractToken(request);
+        UserMetadata userMetadata = jwtService.extractUserMetadata(token);
+        if (userMetadata == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Unauthorized");
+        }
+
+        try {
+            fileMetadataService.uploadNewVersion(fileId, file, userMetadata);
+            return ResponseEntity.ok("Nueva versión subida correctamente para el archivo con fileId: " + fileId);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error al subir la nueva versión: " + e.getMessage());
+        }
+    }
+
 
 }
