@@ -26,7 +26,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Configurar CORS correctamente
                 .csrf(csrf -> csrf.disable()) // Desactivar CSRF
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/files/download/**").permitAll() // Permitir acceso público a descargas
+                        .requestMatchers("/files/download/**","/swagger-ui/**", "/v3/api-docs/**").permitAll() // Permitir acceso público a descargas
                         .anyRequest().authenticated() // Todo lo demás requiere autenticación
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // API Stateless
