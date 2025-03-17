@@ -76,45 +76,53 @@ public class FileController {
         }
     }
 
-    @GetMapping
-    public ResponseEntity<?> getFiles(
-            HttpServletRequest request,
-            @RequestParam(required = false) String userId,
-            @RequestParam(required = false) String fileType,
-            @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo,
-            @RequestParam(required = false) Long minSize,
-            @RequestParam(required = false) Long maxSize,
-            @RequestParam(required = false) String sortBy,
-            @RequestParam(required = false, defaultValue = "asc") String order
-    ) {
-        String token = jwtService.extractToken(request);
-        UserMetadata userMetadata = jwtService.extractUserMetadata(token);
-        if (userMetadata == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                    "success", false,
-                    "message", "Unauthorized"
-            ));
+        @GetMapping
+        public ResponseEntity<?> getFiles(
+                HttpServletRequest request,
+                @RequestParam(required = false) String id,
+                @RequestParam(required = false) String userId,
+                @RequestParam(required = false) String username,
+                @RequestParam(required = false) String fileName,
+                @RequestParam(required = false) String fileType,
+                @RequestParam(required = false) String dateFrom,
+                @RequestParam(required = false) String dateTo,
+                @RequestParam(required = false) Long minSize,
+                @RequestParam(required = false) Long maxSize,
+                @RequestParam(required = false) String sortBy,
+                @RequestParam(required = false, defaultValue = "asc") String order
+        ) {
+            String token = jwtService.extractToken(request);
+            UserMetadata userMetadata = jwtService.extractUserMetadata(token);
+            if (userMetadata == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "success", false,
+                        "message", "Unauthorized"
+                ));
+            }
+            String company = userMetadata.getCompany();
+
+            Map<String, Object> response = fileMetadataService.getFilesResponse(
+                    id,
+                    fileName,
+                    username,
+                    userId,
+                    company,
+                    fileType,
+                    dateFrom,
+                    dateTo,
+                    minSize,
+                    maxSize,
+                    sortBy,
+                    order
+            );
+
+            return ResponseEntity.ok(response);
         }
-        String company = userMetadata.getCompany();
-        List<FileMetadata> files = fileMetadataService.findFiles(userId, company, fileType, dateFrom, dateTo, minSize, maxSize, sortBy, order);
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Files retrieved successfully",
-                "data", files
-        ));
-    }
+
+
 
     @GetMapping("/download/{id}")
-    public ResponseEntity<?> downloadOrDisplayFile(@PathVariable("id") String id, HttpServletRequest request) {
-        String token = jwtService.extractToken(request);
-        UserMetadata userMetadata = jwtService.extractUserMetadata(token);
-        if (userMetadata == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                    "success", false,
-                    "message", "Unauthorized"
-            ));
-        }
+    public ResponseEntity<?> downloadOrDisplayFile(@PathVariable("id") String id) {
         FileMetadata metadata = fileMetadataService.getFileMetadataById(id);
         if (metadata == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
@@ -131,7 +139,9 @@ public class FileController {
                         "message", "File not found or not readable"
                 ));
             }
-            String contentType = metadata.getContentType() != null ? metadata.getContentType() : "application/octet-stream";
+            String contentType = (metadata.getContentType() != null)
+                    ? metadata.getContentType() : "application/octet-stream";
+            // Si es una imagen, se muestra en el navegador (inline); en otro caso se fuerza la descarga (attachment)
             String contentDisposition = contentType.startsWith("image/") ?
                     "inline; filename=\"" + metadata.getFileName() + "\"" :
                     "attachment; filename=\"" + metadata.getFileName() + "\"";
@@ -146,6 +156,7 @@ public class FileController {
             ));
         }
     }
+
 
     @PutMapping("/{id}")
     public ResponseEntity<?> updateFileMetadata(@PathVariable("id") String id,
