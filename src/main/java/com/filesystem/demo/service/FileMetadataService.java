@@ -10,6 +10,8 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import java.util.stream.Collectors;
+
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -79,7 +81,6 @@ public class FileMetadataService {
         if (username != null && !username.isEmpty()) {
             query.addCriteria(Criteria.where("uploaderUsername").regex(username, "i"));
         }
-
         if (userId != null && !userId.isEmpty()) {
             query.addCriteria(Criteria.where("uploaderId").is(userId));
         }
@@ -103,7 +104,6 @@ public class FileMetadataService {
                 Date toDate = dateFormat.parse(dateTo);
                 query.addCriteria(Criteria.where("uploadDate").lte(toDate));
             } catch (ParseException e) {
-                // Manejo del error
             }
         }
         if (minSize != null) {
@@ -124,9 +124,17 @@ public class FileMetadataService {
 
         List<FileMetadata> files = mongoTemplate.find(query, FileMetadata.class);
 
+        Map<String, FileMetadata> latestFilesMap = files.stream()
+                .collect(Collectors.toMap(
+                        FileMetadata::getFileId,
+                        file -> file,
+                        (existing, replacement) -> existing.getVersion() >= replacement.getVersion() ? existing : replacement
+                ));
+        List<FileMetadata> latestFiles = new ArrayList<>(latestFilesMap.values());
+
         String baseUrl = "http://localhost:8090/files/download/";
         List<Map<String, Object>> fileResponses = new ArrayList<>();
-        for (FileMetadata file : files) {
+        for (FileMetadata file : latestFiles) {
             Map<String, Object> fileMap = new HashMap<>();
             fileMap.put("id", file.getId());
             fileMap.put("fileId", file.getFileId());
