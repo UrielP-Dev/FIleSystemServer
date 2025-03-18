@@ -13,7 +13,7 @@ public class FileStorageService {
     @Value("${file.upload-dir}")
     private String uploadDir;
 
-    public Path storeFile(MultipartFile file) throws IOException {
+    public Path storeFile(MultipartFile file, String newFileName) throws IOException {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("No file provided");
         }
@@ -23,9 +23,27 @@ public class FileStorageService {
             Files.createDirectories(uploadPath);
         }
 
-        Path filePath = uploadPath.resolve(file.getOriginalFilename());
+        Path filePath = uploadPath.resolve(newFileName);
         Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
         return filePath;
     }
+
+
+    public boolean deleteFile(String filePath) {
+        try {
+            Path path = Paths.get(filePath);
+            return Files.deleteIfExists(path);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    public Path storeFile(MultipartFile file) throws IOException {
+        return storeFile(file, file.getOriginalFilename());
+    }
+
+
+
+
 }

@@ -18,14 +18,14 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.disable()) // Desactivar CSRF
                 .authorizeHttpRequests(auth -> auth
-                        // If you want all endpoints protected, then this is fine
-                        .anyRequest().authenticated()
+                        .requestMatchers("/files/download/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll() // Permitir acceso público a descargas
+                        .anyRequest().authenticated() // Todo lo demás requiere autenticación
                 )
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // API Stateless
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class); // Filtro de JWT
 
-        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }
