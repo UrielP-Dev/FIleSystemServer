@@ -111,9 +111,7 @@ public class FileMetadataService {
         fileMetadataRepository.save(newMetadata);
     }
 
-    /**
-     * Recupera archivos aplicando filtros y ordenamientos.
-     */
+
     public Map<String, Object> getFilesResponse(
             String id,
             String fileName,
@@ -182,7 +180,6 @@ public class FileMetadataService {
         }
 
         List<FileMetadata> files = mongoTemplate.find(query, FileMetadata.class);
-        String baseUrl = "http://localhost:8090/files/download/";
         List<Map<String, Object>> fileResponses = new ArrayList<>();
         for (FileMetadata file : files) {
             Map<String, Object> fileMap = new HashMap<>();
@@ -193,7 +190,7 @@ public class FileMetadataService {
             fileMap.put("contentType", file.getContentType());
             fileMap.put("uploadDate", file.getUploadDate());
             fileMap.put("uploaderUsername", file.getUploaderUsername());
-            fileMap.put("downloadUrl", baseUrl + file.getId());
+            fileMap.put("downloadUrl", file.getFilePath());
             fileResponses.add(fileMap);
         }
         Map<String, Object> response = new HashMap<>();
@@ -202,6 +199,7 @@ public class FileMetadataService {
         response.put("data", fileResponses);
         return response;
     }
+
 
     /**
      * Recupera la metadata de un archivo por su ID.
