@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.nio.file.Path;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -33,13 +32,16 @@ public class FileMetadataService {
         this.mongoTemplate = mongoTemplate;
     }
 
-    public void saveFileMetadata(String fileName, Path filePath, MultipartFile file, UserMetadata userMetadata) {
+    /**
+     * Guarda la metadata del archivo utilizando la URL devuelta por S3.
+     */
+    public void saveFileMetadata(String fileName, String fileUrl, MultipartFile file, UserMetadata userMetadata) {
         String fileId = UUID.randomUUID().toString();
 
         FileMetadata metadata = FileMetadata.builder()
                 .fileId(fileId)
                 .fileName(fileName)
-                .filePath(filePath.toAbsolutePath().toString())
+                .filePath(fileUrl)
                 .fileSize(file.getSize())
                 .contentType(file.getContentType())
                 .uploadDate(new Date())
@@ -53,7 +55,65 @@ public class FileMetadataService {
         fileMetadataRepository.save(metadata);
     }
 
+    /**
+     * Sube el archivo a S3, guarda la metadata y retorna la URL.
+     */
+    public String storeFile(MultipartFile file, UserMetadata userMetadata) throws IOException {
+        String fileUrl = fileStorageService.storeFile(file);
+        saveFileMetadata(file.getOriginalFilename(), fileUrl, file, userMetadata);
+        return fileUrl;
+    }
 
+    /**
+     * Elimina el archivo de S3 y borra la metadata en MongoDB.
+     * Se utiliza el nombre de archivo (key en S3) para la eliminación.
+     */
+    public boolean deleteFile(String fileId, UserMetadata userMetadata) {
+        FileMetadata fileMetadata = fileMetadataRepository.findById(fileId).orElse(null);
+        if (fileMetadata == null || !fileMetadata.getUploaderId().equals(userMetadata.getUserId())) {
+            return false;
+        }
+
+        boolean fileDeleted = fileStorageService.deleteFile(fileMetadata.getFileName());
+        if (fileDeleted) {
+            fileMetadataRepository.deleteById(fileId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Sube una nueva versión de un archivo.
+     */
+    public void uploadNewVersion(String fileId, MultipartFile file, UserMetadata userMetadata) throws IOException {
+        FileMetadata lastVersion = fileMetadataRepository.findTopByFileIdOrderByVersionDesc(fileId);
+        int newVersion = (lastVersion != null) ? lastVersion.getVersion() + 1 : 1;
+
+        String baseFileName = (lastVersion != null) ? lastVersion.getFileName() : file.getOriginalFilename();
+        String newFileName = baseFileName + "_v" + newVersion;
+
+        String fileUrl = fileStorageService.storeFile(file, newFileName);
+
+        FileMetadata newMetadata = FileMetadata.builder()
+                .fileId(fileId)
+                .fileName(baseFileName)
+                .filePath(fileUrl)
+                .fileSize(file.getSize())
+                .contentType(file.getContentType())
+                .uploadDate(new Date())
+                .uploaderId(userMetadata.getUserId())
+                .uploaderUsername(userMetadata.getUsername())
+                .uploaderCompany(userMetadata.getCompany())
+                .uploaderRole(userMetadata.getRole())
+                .version(newVersion)
+                .build();
+
+        fileMetadataRepository.save(newMetadata);
+    }
+
+    /**
+     * Recupera archivos aplicando filtros y ordenamientos.
+     */
     public Map<String, Object> getFilesResponse(
             String id,
             String fileName,
@@ -79,7 +139,6 @@ public class FileMetadataService {
         if (username != null && !username.isEmpty()) {
             query.addCriteria(Criteria.where("uploaderUsername").regex(username, "i"));
         }
-
         if (userId != null && !userId.isEmpty()) {
             query.addCriteria(Criteria.where("uploaderId").is(userId));
         }
@@ -96,6 +155,7 @@ public class FileMetadataService {
                 Date fromDate = dateFormat.parse(dateFrom);
                 query.addCriteria(Criteria.where("uploadDate").gte(fromDate));
             } catch (ParseException e) {
+                // Manejo opcional de la excepción
             }
         }
         if (dateTo != null && !dateTo.isEmpty()) {
@@ -103,7 +163,7 @@ public class FileMetadataService {
                 Date toDate = dateFormat.parse(dateTo);
                 query.addCriteria(Criteria.where("uploadDate").lte(toDate));
             } catch (ParseException e) {
-                // Manejo del error
+                // Manejo opcional de la excepción
             }
         }
         if (minSize != null) {
@@ -112,7 +172,6 @@ public class FileMetadataService {
         if (maxSize != null) {
             query.addCriteria(Criteria.where("fileSize").lte(maxSize));
         }
-
         if (sortBy != null && !sortBy.isEmpty()) {
             Sort.Direction direction = ("desc".equalsIgnoreCase(order)) ? Sort.Direction.DESC : Sort.Direction.ASC;
             if ("date".equalsIgnoreCase(sortBy)) {
@@ -123,7 +182,6 @@ public class FileMetadataService {
         }
 
         List<FileMetadata> files = mongoTemplate.find(query, FileMetadata.class);
-
         String baseUrl = "http://localhost:8090/files/download/";
         List<Map<String, Object>> fileResponses = new ArrayList<>();
         for (FileMetadata file : files) {
@@ -138,7 +196,6 @@ public class FileMetadataService {
             fileMap.put("downloadUrl", baseUrl + file.getId());
             fileResponses.add(fileMap);
         }
-
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
         response.put("message", "Files retrieved successfully");
@@ -146,66 +203,26 @@ public class FileMetadataService {
         return response;
     }
 
-
+    /**
+     * Recupera la metadata de un archivo por su ID.
+     */
     public FileMetadata getFileMetadataById(String id) {
         return fileMetadataRepository.findById(id).orElse(null);
     }
 
+    /**
+     * Actualiza la metadata de un archivo, verificando permisos.
+     */
     public boolean updateFileMetadata(String fileId, FileMetadata updatedMetadata, UserMetadata userMetadata) {
         FileMetadata existingFile = fileMetadataRepository.findById(fileId).orElse(null);
         if (existingFile == null || !existingFile.getUploaderId().equals(userMetadata.getUserId())) {
             return false;
         }
-
         existingFile.setFileName(updatedMetadata.getFileName());
         existingFile.setContentType(updatedMetadata.getContentType());
-
         fileMetadataRepository.save(existingFile);
         return true;
     }
-
-    public boolean deleteFile(String fileId, UserMetadata userMetadata) {
-        FileMetadata fileMetadata = fileMetadataRepository.findById(fileId).orElse(null);
-        if (fileMetadata == null || !fileMetadata.getUploaderId().equals(userMetadata.getUserId())) {
-            return false;
-        }
-
-        boolean fileDeleted = fileStorageService.deleteFile(fileMetadata.getFilePath());
-        if (fileDeleted) {
-            fileMetadataRepository.deleteById(fileId);
-            return true;
-        }
-
-        return false;
-    }
-
-    public void uploadNewVersion(String fileId, MultipartFile file, UserMetadata userMetadata) throws IOException {
-        FileMetadata lastVersion = fileMetadataRepository.findTopByFileIdOrderByVersionDesc(fileId);
-        int newVersion = (lastVersion != null) ? lastVersion.getVersion() + 1 : 1;
-
-        // Definir el nombre del nuevo archivo (manteniendo el nombre base o agregando el número de versión).
-        String baseFileName = (lastVersion != null) ? lastVersion.getFileName() : file.getOriginalFilename();
-        String newFileName = baseFileName + "_v" + newVersion;
-
-        Path filePath = fileStorageService.storeFile(file, newFileName);
-
-        FileMetadata newMetadata = FileMetadata.builder()
-                .fileId(fileId)
-                .fileName(baseFileName)
-                .filePath(filePath.toAbsolutePath().toString())
-                .fileSize(file.getSize())
-                .contentType(file.getContentType())
-                .uploadDate(new Date())
-                .uploaderId(userMetadata.getUserId())
-                .uploaderUsername(userMetadata.getUsername())
-                .uploaderCompany(userMetadata.getCompany())
-                .uploaderRole(userMetadata.getRole())
-                .version(newVersion)
-                .build();
-
-        fileMetadataRepository.save(newMetadata);
-    }
-
     public List<FileMetadata> getAllVersions(String fileId) {
         return fileMetadataRepository.findByFileIdOrderByVersionDesc(fileId);
     }

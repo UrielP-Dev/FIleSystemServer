@@ -9,8 +9,6 @@ import com.filesystem.demo.service.JwtService;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,15 +16,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import jakarta.servlet.http.HttpServletRequest;
-
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -34,6 +23,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
+import java.io.IOException;
+import java.net.URI;
+import java.util.List;
+import java.util.Map;
+import java.time.LocalDateTime;
 
 @Tag(name = "File Management", description = "Operations pertaining to file management")
 @RestController
@@ -79,12 +74,15 @@ public class FileController {
             ));
         }
         try {
-            Path filePath = fileStorageService.storeFile(file);
-            fileMetadataService.saveFileMetadata(file.getOriginalFilename(), filePath, file, userMetadata);
+            // Obtiene la URL de S3 en lugar de la ruta local.
+            String fileUrl = fileStorageService.storeFile(file);
+            // Guarda la metadata usando la URL del archivo en S3.
+            fileMetadataService.saveFileMetadata(file.getOriginalFilename(), fileUrl, file, userMetadata);
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "File uploaded and metadata saved successfully",
-                    "fileName", file.getOriginalFilename()
+                    "fileName", file.getOriginalFilename(),
+                    "fileUrl", fileUrl
             ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
@@ -106,8 +104,7 @@ public class FileController {
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Files retrieved successfully", content = @Content(schema = @Schema(implementation = Map.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized, invalid or missing token", content = @Content(schema = @Schema(implementation = Map.class)))
-    })    @SecurityRequirement(name = "BearerAuth")
-
+    })
     @SecurityRequirement(name = "BearerAuth")
     @GetMapping
     public ResponseEntity<?> getFiles(
@@ -154,14 +151,14 @@ public class FileController {
 
     @Operation(
             summary = "Download or display a file",
-            description = "Downloads or displays a file based on its type. Images are displayed inline, other files are downloaded."
+            description = "Downloads or displays a file based on its type. Since the file is stored in S3, the endpoint redirects to the S3 URL."
     )
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "File retrieved successfully", content = @Content(mediaType = "application/octet-stream")),
+            @ApiResponse(responseCode = "302", description = "File retrieved successfully via redirection", content = @Content(mediaType = "application/octet-stream")),
             @ApiResponse(responseCode = "404", description = "File not found", content = @Content(schema = @Schema(implementation = Map.class))),
             @ApiResponse(responseCode = "500", description = "Internal server error, e.g., file processing failed", content = @Content(schema = @Schema(implementation = Map.class)))
-    })    @SecurityRequirement(name = "BearerAuth")
-
+    })
+    @SecurityRequirement(name = "BearerAuth")
     @GetMapping("/download/{id}")
     public ResponseEntity<?> downloadOrDisplayFile(
             @Parameter(description = "ID of the file to download or display", required = true) @PathVariable("id") String id
@@ -173,30 +170,12 @@ public class FileController {
                     "message", "File not found"
             ));
         }
-        Path filePath = Paths.get(metadata.getFilePath());
-        try {
-            Resource resource = new UrlResource(filePath.toUri());
-            if (!resource.exists() || !resource.isReadable()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                        "success", false,
-                        "message", "File not found or not readable"
-                ));
-            }
-            String contentType = (metadata.getContentType() != null)
-                    ? metadata.getContentType() : "application/octet-stream";
-            String contentDisposition = contentType.startsWith("image/") ?
-                    "inline; filename=\"" + metadata.getFileName() + "\"" :
-                    "attachment; filename=\"" + metadata.getFileName() + "\"";
-            return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
-                    .body(resource);
-        } catch (MalformedURLException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "success", false,
-                    "message", "Error processing file download"
-            ));
-        }
+        // Aquí filePath es la URL de S3.
+        String fileUrl = metadata.getFilePath();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setLocation(URI.create(fileUrl));
+        // Se redirige al recurso en S3
+        return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 
     @Operation(
@@ -312,7 +291,7 @@ public class FileController {
             @ApiResponse(responseCode = "200", description = "New version uploaded successfully", content = @Content(schema = @Schema(implementation = Map.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized, invalid or missing token", content = @Content(schema = @Schema(implementation = Map.class))),
             @ApiResponse(responseCode = "500", description = "Internal server error, e.g., file saving failed", content = @Content(schema = @Schema(implementation = Map.class)))
-    })    @SecurityRequirement(name = "BearerAuth")
+    })
     @SecurityRequirement(name = "BearerAuth")
     @PostMapping("/upload/version/{fileId}")
     public ResponseEntity<?> uploadFileVersion(
