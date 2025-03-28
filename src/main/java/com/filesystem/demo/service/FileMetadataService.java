@@ -1,8 +1,17 @@
 package com.filesystem.demo.service;
 
-import com.filesystem.demo.model.FileMetadata;
-import com.filesystem.demo.model.UserMetadata;
-import com.filesystem.demo.repository.FileMetadataRepository;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -10,14 +19,10 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import java.util.stream.Collectors;
 
-
-import java.io.IOException;
-import java.nio.file.Path;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.*;
+import com.filesystem.demo.model.FileMetadata;
+import com.filesystem.demo.model.UserMetadata;
+import com.filesystem.demo.repository.FileMetadataRepository;
 
 @Service
 public class FileMetadataService {
