@@ -9,12 +9,23 @@ This microservice handles file storage and retrieval.
 - MinIO/S3 (for file storage)
 - JWT (for authentication)
 
+---------------------------------------------
+Generete JWT POST: 
+https://apigateway.nicepebble-44974112.eastus.azurecontainerapps.io/auth/login
+{
+  "username": "",
+  "password": ""
+}
+
+## URL:
+https://apigateway.nicepebble-44974112.eastus.azurecontainerapps.io
+
 ## 📂 Endpoints
 | Method | Endpoint         | Description                |
 |--------|-----------------|----------------------------|
-| POST   | `/upload`       | Uploads a file            |
-| GET    | `/download/{id}` | Downloads a file          |
-| DELETE | `/delete/{id}`  | Deletes a file            |
+| POST   | `/files/upload)`       | Uploads a file            |
+| GET    | `/files/{id}` | Downloads a file          |
+| DELETE | `/files/{id}`  | Deletes a file            |
 
 ## 📦 Installation
 1. Clone the repository.
